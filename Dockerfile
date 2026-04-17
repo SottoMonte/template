@@ -36,9 +36,8 @@ RUN cp -R /tmp/repo/src /app/ 2>/dev/null || true
 #RUN mkdir -p public/assets && cp -R /tmp/repo/assets/* public/assets/ 2>/dev/null || true
 RUN mkdir -p public && cp -R /tmp/repo/public/* public/ 2>/dev/null || true
 
-# Sovrascrivi con il codice sorgente e assets del workspace
-COPY src /app/src
-COPY assets public/
+# Sovrascrivi con il codice sorgente del workspace
+COPY src/application /app/src/application
 
 # Rimuovi git per mantenere l'immagine più leggera possibile.
 RUN apk del git
