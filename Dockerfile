@@ -3,27 +3,28 @@ FROM python:3-alpine AS builder
 
 WORKDIR /app
 
-# Tool necessari
-RUN apk add --no-cache build-base git
+# Installiamo solo git (build-base rimosso se non strettamente necessario, aggiungilo se serve)
+RUN apk add --no-cache git
 
-# 1. Installazione librerie (Cache efficiente)
+# 1. CLONAZIONE (In una cartella isolata fuori da /app)
+ARG REPO_URL="https://github.com/SottoMonte/frameworkkk"
+RUN git clone --depth 1 ${REPO_URL} /tmp/framework_repo
+
+# 2. COSTRUZIONE STRUTTURA (Solo i pezzi del framework che ti servono)
+# Copiamo src e public, ma cancelliamo IMMEDIATAMENTE la cartella application remota
+RUN mkdir -p /app/src /app/public && \
+    cp -R /tmp/framework_repo/src/* /app/src/ && \
+    cp -R /tmp/framework_repo/public/* /app/public/ && \
+    rm -rf /app/src/application
+
+# 3. INSTALLAZIONE DIPENDENZE (Nel builder)
 COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
-# 2. Clonazione del framework in una cartella TEMPORANEA
-ARG REPO_URL="https://github.com/SottoMonte/frameworkkk"
-RUN git clone --depth 1 ${REPO_URL} /tmp/repo
-
-# 3. Costruzione struttura /app
-# Copiamo tutto il framework, ma ESCLUDIAMO o CANCELLIAMO subito la loro cartella application
-RUN mkdir -p src public && \
-    cp -R /tmp/repo/src/* ./src/ && \
-    cp -R /tmp/repo/public/* ./public/ && \
-    rm -rf src/application  # <--- ELIMINIAMO i file remoti prima di mettere i tuoi
-
-# 4. Iniezione file LOCALI (I tuoi file vincono sempre)
-COPY pyproject.toml ./pyproject.toml
-COPY src/application ./src/application
+# 4. INIEZIONE FILE LOCALI (Questi devono sovrascrivere tutto)
+# Usiamo COPY diretto sulla destinazione finale
+COPY pyproject.toml /app/pyproject.toml
+COPY src/application /app/src/application
 
 # --- STAGE 2: Runtime ---
 FROM python:3-alpine AS runner
@@ -39,10 +40,10 @@ ENV PYTHONPATH="/app" \
 # Copia librerie
 COPY --from=builder /install /usr/local
 
-# Copia file pronti dal builder
-COPY --from=builder /app/src ./src
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/pyproject.toml ./pyproject.toml
+# Copia i file generati nel builder
+# NOTA: Copiando la cartella /app intera dal builder, prendiamo 
+# esattamente la struttura che abbiamo pulito e montato sopra.
+COPY --from=builder /app /app
 
 EXPOSE ${PORT}
 
