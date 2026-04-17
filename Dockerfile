@@ -31,14 +31,14 @@ RUN echo "Forzo l'invalicamento della cache per il codice con il timestamp: ${BU
     && apk add --no-cache git \
     && git clone ${REPO_URL} /tmp/repo
 
-# 4. SPOSTA IL CODICE SORGENTE
-RUN mkdir -p src/application && mv /tmp/repo/src/application/* src/application/
-
-# Sposta il contenuto della cartella 'assets' in public/assets
+# Copia le cartelle necessarie del repository clonato
+RUN cp -R /tmp/repo/src /app/ 2>/dev/null || true
 RUN mkdir -p public/assets && cp -R /tmp/repo/assets/* public/assets/ 2>/dev/null || true
-
-# Copia anche gli script / file statici presenti nella cartella public del repository clonato.
 RUN mkdir -p public && cp -R /tmp/repo/public/* public/ 2>/dev/null || true
+
+# Sovrascrivi con il codice sorgente e assets del workspace
+COPY src /app/src
+COPY assets public/assets
 
 # Rimuovi git per mantenere l'immagine più leggera possibile.
 RUN apk del git
@@ -64,7 +64,7 @@ ENV PATH="/venv/bin:$PATH"
 
 # Copia l'ambiente virtuale (che ora è solo una directory con le librerie)
 COPY --from=builder /venv /venv
-COPY --from=builder /app/src /app/src
+COPY --from=builder /app/src src
 COPY --from=builder /app/pyproject.toml /app/
 COPY --from=builder /app/public public
 
