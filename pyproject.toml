@@ -1,0 +1,22 @@
+[project]
+name = "template.onrender.com"                                       # Reverse Domain Name
+version = "0.1.0"                                                    # App Version
+description = "template"                                             # Project Description
+readme = "README.md"                                                 # Documentation Files
+requires-python = ">=3.9"                                            # Minimum Required Python Version
+key = "rSc4ExXBDvtKF03pHd8W3Kz5VfSW7z0ITQsAR46nELg"                  # App Secret Key
+mode = "development"                                                 # Application Mode
+
+[project.policy]
+presentation = "routes.dsl"
+
+[persistence.API]
+adapter = "api"
+url = "https://jsonplaceholder.typicode.com/"
+
+[presentation.backend]
+adapter = "starlette"
+host = "0.0.0.0"
+port = "5000"
+#ssl_keyfile = "key.pem"
+#ssl_certfile = "cert.pem"

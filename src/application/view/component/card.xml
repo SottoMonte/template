@@ -1,0 +1,10 @@
+<Column width="auto" spacing="10px" class="group hover:border-[{{ component.attributes.color }}] transition-all" background="#1d2026" color="#444" border="1px" padding="25px">
+    <Row align="center" justify="between">
+        <Text font='mono' color='#8c90a1' uppercase='true'>[PORTS: {{ component.attributes.ports }}]</Text>
+        <Text type='h6' font='mono' color='#c2c6d8' uppercase='true'>[NAME: {{ component.attributes.name }}]</Text>
+    </Row>
+    <Divider thickness="10px" color="#e1e2eb" class="group-hover:border-[{{ component.attributes.color }}] transition-all" />
+    <Text type='p' font='body' color='#c2c6d8'>{{ component.attributes.description }}</Text>
+    <Divider thickness="1px" color="#e1e2eb" class="group-hover:border-[{{ component.attributes.color }}] transition-all"/>
+    <Text font='mono' color='#8c90a1' uppercase='true'>[ADAPTERS: {{ component.attributes.adapters }}]</Text>
+</Column>
