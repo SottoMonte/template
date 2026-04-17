@@ -3,28 +3,30 @@ FROM python:3-alpine AS builder
 
 WORKDIR /app
 
-# Installiamo solo git (build-base rimosso se non strettamente necessario, aggiungilo se serve)
-RUN apk add --no-cache git
+# 1. Installazione tool di compilazione (Essenziali per molti requirements.txt)
+RUN apk add --no-cache build-base libffi-dev git
 
-# 1. CLONAZIONE (In una cartella isolata fuori da /app)
+# 2. INSTALLAZIONE DIPENDENZE
+# Facciamolo prima di copiare il framework per sfruttare la cache
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+# 3. CLONAZIONE FRAMEWORK (In cartella isolata)
 ARG REPO_URL="https://github.com/SottoMonte/frameworkkk"
 RUN git clone --depth 1 ${REPO_URL} /tmp/framework_repo
 
-# 2. COSTRUZIONE STRUTTURA (Solo i pezzi del framework che ti servono)
-# Copiamo src e public, ma cancelliamo IMMEDIATAMENTE la cartella application remota
-RUN mkdir -p /app/src /app/public && \
-    cp -R /tmp/framework_repo/src/* /app/src/ && \
-    cp -R /tmp/framework_repo/public/* /app/public/ && \
-    rm -rf /app/src/application
+# 4. PREPARAZIONE STRUTTURA /app
+# Copiamo tutto dal framework
+RUN cp -R /tmp/framework_repo/src /app/src && \
+    cp -R /tmp/framework_repo/public /app/public
 
-# 3. INSTALLAZIONE DIPENDENZE (Nel builder)
-COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
-
-# 4. INIEZIONE FILE LOCALI (Questi devono sovrascrivere tutto)
-# Usiamo COPY diretto sulla destinazione finale
-COPY pyproject.toml /app/pyproject.toml
+# 5. SOVRASCRITTURA LOCALE (FORZATA)
+# Rimuoviamo la cartella application del framework e mettiamo la TUA
+RUN rm -rf /app/src/application
 COPY src/application /app/src/application
+# Copiamo il tuo pyproject.toml locale (sovrascrive quello del framework se esisteva)
+COPY pyproject.toml /app/pyproject.toml
 
 # --- STAGE 2: Runtime ---
 FROM python:3-alpine AS runner
@@ -37,12 +39,9 @@ ENV PYTHONPATH="/app" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Copia librerie
+# Copia le librerie installate
 COPY --from=builder /install /usr/local
-
-# Copia i file generati nel builder
-# NOTA: Copiando la cartella /app intera dal builder, prendiamo 
-# esattamente la struttura che abbiamo pulito e montato sopra.
+# Copia l'intera cartella /app che abbiamo costruito con cura nel builder
 COPY --from=builder /app /app
 
 EXPOSE ${PORT}
