@@ -1,64 +1,51 @@
-# Stage 1: Build
+# --- STAGE 1: Build ---
 FROM python:3-alpine AS builder
-
-# Variabili per la build
-ARG REPO_URL="https://github.com/SottoMonte/frameworkkk"
-ARG BUILD_TIMESTAMP=unknown
 
 WORKDIR /app
 
-# 1. Installazione dipendenze di sistema necessarie per la compilazione
-RUN apk add --no-cache build-base python3-dev libffi-dev git
+# Tool necessari per compilare (se servono) e clonare
+RUN apk add --no-cache build-base git
 
-# 2. Creazione Virtual Environment reale
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# 3. Installazione dipendenze (Massimizza il caching)
-# Copiamo solo i file dei requisiti prima del resto
+# 1. Installazione dipendenze (Uso --prefix per separare le lib dal sistema)
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
-# 4. Gestione Codice Sorgente
-# Cloniamo in una directory temporanea e spostiamo solo ciò che serve
-RUN git clone ${REPO_URL} /tmp/repo && \
-    mkdir -p public && \
-    cp -R /tmp/repo/public/* public/ 2>/dev/null || true && \
-    cp -R /tmp/repo/src src/ 2>/dev/null || true
+# 2. Clonazione framework esterno (Clona solo l'ultima versione)
+ARG REPO_URL="https://github.com/SottoMonte/frameworkkk"
+RUN git clone --depth 1 ${REPO_URL} /tmp/repo && \
+    mkdir -p src public && \
+    cp -R /tmp/repo/src/* ./src/ && \
+    cp -R /tmp/repo/public/* ./public/
 
-# 5. Sovrascrittura locale (se presente nel contesto di build)
-# Rimuoviamo la parte specifica che vuoi sostituire e copiamo la nuova
+# 3. Pulizia e Sovrascrittura LOCALE (Il tuo codice vince)
+# Rimuoviamo la vecchia logica per non fare confusione
 RUN rm -rf src/application
-COPY src/application src/application
 
-# ---
+# COPIAMO I TUOI FILE LOCALI
+COPY src/application ./src/application
+COPY pyproject.toml ./pyproject.toml 
 
-# Stage 2: Runtime (Immagine finale leggera)
+# --- STAGE 2: Runtime ---
 FROM python:3-alpine AS runner
 
 WORKDIR /app
 
-# Variabili d'ambiente
-ENV PATH="/opt/venv/bin:$PATH" \
-    PYTHONPATH="/app" \
+# Variabili Ambiente per ottimizzare Python in Docker
+ENV PYTHONPATH="/app" \
+    PATH="/usr/local/bin:$PATH" \
     PORT=8000 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# 1. Creazione utente non-root per sicurezza
-RUN adduser -D appuser && \
-    mkdir -p /app && chown appuser:appuser /app
+# Copia delle librerie (pre-compilate nel builder)
+COPY --from=builder /install /usr/local
 
-# 2. Copia solo l'essenziale dallo stage builder
-COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
-COPY --from=builder --chown=appuser:appuser /app/src ./src
-COPY --from=builder --chown=appuser:appuser /app/public ./public
-COPY --from=builder --chown=appuser:appuser /app/requirements.txt .
-
-USER appuser
+# Copia dei file finali
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/pyproject.toml ./pyproject.toml
 
 EXPOSE ${PORT}
 
-# Usa il modulo python se main.py è un entry point
+# Avvio
 CMD ["python", "public/main.py"]
