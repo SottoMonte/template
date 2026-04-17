@@ -1,73 +1,64 @@
 # Stage 1: Build
 FROM python:3-alpine AS builder
 
+# Variabili per la build
 ARG REPO_URL="https://github.com/SottoMonte/frameworkkk"
+ARG BUILD_TIMESTAMP=unknown
 
 WORKDIR /app
 
-# 1. COPIA SOLO I FILE DI DIPENDENZA (Massimizza il caching)
-COPY pyproject.toml .
+# 1. Installazione dipendenze di sistema necessarie per la compilazione
+RUN apk add --no-cache build-base python3-dev libffi-dev git
+
+# 2. Creazione Virtual Environment reale
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# 3. Installazione dipendenze (Massimizza il caching)
+# Copiamo solo i file dei requisiti prima del resto
 COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# --- NUOVE ISTRUZIONI PER LA CACHE DELLE DIPENDENZE ---
-# NUOVO PASSO 5: Crea VENV e aggiorna pip (dovrebbe andare in cache facilmente)
-RUN apk add --no-cache build-base python3-dev libffi-dev && \
-    mkdir -p /venv && \
-    pip install --no-cache-dir --upgrade pip
+# 4. Gestione Codice Sorgente
+# Cloniamo in una directory temporanea e spostiamo solo ciò che serve
+RUN git clone ${REPO_URL} /tmp/repo && \
+    mkdir -p public && \
+    cp -R /tmp/repo/public/* public/ 2>/dev/null || true && \
+    cp -R /tmp/repo/src src/ 2>/dev/null || true
 
-# NUOVO PASSO 6: Installa le dipendenze (l'istruzione lunga)
-ENV VIRTUAL_ENV=/venv
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-RUN pip install --target /venv --no-cache-dir -r requirements.txt
-# --- FINE NUOVE ISTRUZIONI ---
+# 5. Sovrascrittura locale (se presente nel contesto di build)
+# Rimuoviamo la parte specifica che vuoi sostituire e copiamo la nuova
+RUN rm -rf src/application
+COPY src/application src/application
 
+# ---
 
-# 🚩 PUNTO DI INVALICAMENTO FORZATO (CACHE-BUSTER)
-# Il resto rimane uguale, ma con il numero di passo aggiornato.
-# PASSO 7 (Prima era il 6)
-ARG BUILD_TIMESTAMP=
-
-RUN echo "Forzo l'invalicamento della cache per il codice con il timestamp: ${BUILD_TIMESTAMP}" \
-    && apk add --no-cache git \
-    && git clone ${REPO_URL} /tmp/repo
-
-# Copia le cartelle necessarie del repository clonato
-RUN cp -R /tmp/repo/src /app/ 2>/dev/null || true
-#RUN mkdir -p public/assets && cp -R /tmp/repo/assets/* public/assets/ 2>/dev/null || true
-RUN mkdir -p public && cp -R /tmp/repo/public/* public/ 2>/dev/null || true
-
-# Sovrascrivi con il codice sorgente del workspace
-COPY src/application /app/src/application
-
-# Rimuovi git per mantenere l'immagine più leggera possibile.
-RUN apk del git
-
-# Stage 2: Runtime (Leggermente modificato per riflettere l'installazione senza venv)
+# Stage 2: Runtime (Immagine finale leggera)
 FROM python:3-alpine AS runner
 
-# Imposta le variabili d'ambiente per l'ambiente virtuale fittizio e la porta.
-ENV VIRTUAL_ENV=/venv
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-ENV PORT=8000
-
-
-
-# Imposta la directory di lavoro.
 WORKDIR /app
 
-# Variabili d'Ambiente cruciali per Python
-# Aggiunge la directory dove sono installate le dipendenze al PYTHONPATH
-ENV PYTHONPATH=/venv
-# Aggiunge i binari di Python (se non già presenti nel path)
-ENV PATH="/venv/bin:$PATH"
+# Variabili d'ambiente
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONPATH="/app" \
+    PORT=8000 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-# Copia l'ambiente virtuale (che ora è solo una directory con le librerie)
-COPY --from=builder /venv /venv
-COPY --from=builder /app/src src
-COPY --from=builder /app/pyproject.toml /app/
-COPY --from=builder /app/public public
+# 1. Creazione utente non-root per sicurezza
+RUN adduser -D appuser && \
+    mkdir -p /app && chown appuser:appuser /app
+
+# 2. Copia solo l'essenziale dallo stage builder
+COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
+COPY --from=builder --chown=appuser:appuser /app/src ./src
+COPY --from=builder --chown=appuser:appuser /app/public ./public
+COPY --from=builder --chown=appuser:appuser /app/requirements.txt .
+
+USER appuser
 
 EXPOSE ${PORT}
 
-# Comando per lanciare l'applicazione.
-CMD ["python3", "public/main.py"]
+# Usa il modulo python se main.py è un entry point
+CMD ["python", "public/main.py"]
