@@ -37,6 +37,9 @@ RUN mkdir -p src/application && mv /tmp/repo/src/application/* src/application/
 # Sposta il contenuto della cartella 'assets' in public/assets
 RUN mkdir -p public/assets && cp -R /tmp/repo/assets/* public/assets/ 2>/dev/null || true
 
+# Copia anche gli script / file statici presenti nella cartella public del repository clonato.
+RUN mkdir -p public && cp -R /tmp/repo/public/* public/ 2>/dev/null || true
+
 # Rimuovi git per mantenere l'immagine più leggera possibile.
 RUN apk del git
 
@@ -64,9 +67,6 @@ COPY --from=builder /venv /venv
 COPY --from=builder /app/src /app/src
 COPY --from=builder /app/pyproject.toml /app/
 COPY --from=builder /app/public public
-
-COPY public/main.py /app/public/main.py
-COPY src /app/src
 
 EXPOSE ${PORT}
 
